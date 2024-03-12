@@ -1,17 +1,26 @@
-import { useContext, useLayoutEffect } from "react";
+import { useContext, useLayoutEffect, useState } from "react";
 import { View, StyleSheet } from "react-native";
-import { ExpensesContext } from '../store/expenses-context'
-import IconButton from "../components/UI/IconButton";
 import ExpenseForm from "../components/ManageExpense/ExpenseForm";
+import IconButton from "../components/UI/IconButton";
+import LoadingOverlay from "../components/UI/LoadingOverlay";
+import ErrorOverlay from "../components/UI/ErrorOverlay";
+import { ExpensesContext } from '../store/expenses-context'
 import { GlobalStyles } from "../constants/styles";
+import {
+  storeExpense,
+  updateExpense as httpUpdateExpense,
+  deleteExpense as httpDeleteExpense
+} from "../util/http";
 
 export default function ManageExpense({ route, navigation }) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState();
   const { deleteExpense, addExpense, updateExpense, expenses } = useContext(ExpensesContext);
   const editedExpenseId = route.params?.expenseId;
   const isEditing = !!editedExpenseId
   const { setOptions, goBack } = navigation;
 
-  const selectedExpense = expenses.find(expense => expense.id === editedExpenseId)
+  const selectedExpense = expenses.find(expense => expense.id === editedExpenseId);
 
   useLayoutEffect(() => {
     setOptions({
@@ -19,22 +28,50 @@ export default function ManageExpense({ route, navigation }) {
     })
   }, [setOptions, isEditing])
 
-  const deleteHandler = () => {
-    deleteExpense(editedExpenseId);
-    goBack();
+  const deleteHandler = async () => {
+    setIsLoading(true);
+    try {
+      await httpDeleteExpense(editedExpenseId);
+      deleteExpense(editedExpenseId);
+      goBack();
+    } catch (error) {
+      setError('Could not delete expense.');
+    }
+    setIsLoading(false);
   }
 
   const cancelHandler = () => {
     goBack();
   }
 
-  const confirmHandler = (expenseData) => {
+  const confirmHandler = async (expenseData) => {
+    setIsLoading(true);
     if (isEditing) {
-      updateExpense(editedExpenseId, { ...expenseData })
+      try {
+        await httpUpdateExpense(editedExpenseId, { ...expenseData });
+        updateExpense(editedExpenseId, { ...expenseData });
+        goBack();
+      } catch (error) {
+        setError('Could not update expense.');
+      }
     } else {
-      addExpense({ ...expenseData })
+      try {
+        const id = await storeExpense(expenseData);
+        addExpense({ id, ...expenseData });
+        goBack();
+      } catch (error) {
+        setError('Could not add expense.');
+      }
     }
-    goBack();
+    setIsLoading(false);
+  }
+
+  if (isLoading) {
+    return <LoadingOverlay />
+  }
+
+  if (error) {
+    return <ErrorOverlay message={error} />
   }
 
   return (
